@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ulaştırma Oyunu</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-container">
+        <div id="game-ui">
+            <div id="score-container">Skor: <span id="score">0</span></div>
+            <div id="level-container">Level: <span id="level">1</span></div>
+            <div id="time-container">Süre: <span id="time">10</span></div>
+            <div id="lives-container">Can: <span id="lives">3</span></div>
+            <div id="shield-container">Kalkan: <span id="shield-status">Yok</span></div>
+        </div>
+        
+        <canvas id="gameCanvas"></canvas>
+        
+        <div id="start-screen" class="screen">
+            <h1>Ulaştırma Oyunu</h1>
+            <p>Kırmızı paketleri alıp teslimat noktalarına ulaştırın!</p>
+            <p>Her 50 puan sonrası level atlayarak daha fazla engelle karşılaşın!</p>
+            <p>Mavi kalkanları toplayarak 3 saniye boyunca engellere çarpmadan ilerleyin!</p>
+            <button id="start-button">Başla</button>
+        </div>
+        
+        <div id="game-over-screen" class="screen hidden">
+            <h1>Oyun Bitti!</h1>
+            <p>Skorunuz: <span id="final-score">0</span></p>
+            <button id="restart-button">Tekrar Oyna</button>
+        </div>
+    </div>
+    
+    <script src="game.js"></script>
+</body>
+</html>
