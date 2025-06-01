@@ -29,10 +29,22 @@ const STUN_TIME = 2000; // milisaniye
 const SHIELD_TIME = 3000; // milisaniye
 const SHIELD_SPAWN_CHANCE = 0.005; // Her frame'de kalkan oluşma olasılığı
 
+// Local storage'dan maxLevel'i yükle
+function loadMaxLevel() {
+    const savedMaxLevel = localStorage.getItem('kuryeOyunuMaxLevel');
+    return savedMaxLevel ? parseInt(savedMaxLevel) : 1;
+}
+
+// Local storage'a maxLevel'i kaydet
+function saveMaxLevel(level) {
+    localStorage.setItem('kuryeOyunuMaxLevel', level.toString());
+}
+
 // Oyun durumu
 let gameRunning = false;
 let score = 0;
 let level = 1;
+let maxLevel = loadMaxLevel();
 let lives = 3;
 let deliveryTimer = DELIVERY_TIME;
 let lastTime = 0;
@@ -43,6 +55,7 @@ let shieldUntil = 0;
 let shield = null;
 let package = null;
 let hasPackage = false;
+let currentScreen = "start";
 
 // Harita elemanları
 const MAP = {
@@ -105,14 +118,14 @@ const keys = {
 };
 
 // Oyunu başlat
-function init() {
+function init(selectedLevel = 1) {
     // Canvas boyutunu ayarla
     canvas.width = GAME_WIDTH;
     canvas.height = GAME_HEIGHT;
     
     // Oyun değişkenlerini sıfırla
     score = 0;
-    level = 1;
+    level = selectedLevel;
     lives = 3;
     deliveryTimer = DELIVERY_TIME;
     isStunned = false;
@@ -120,6 +133,7 @@ function init() {
     hasPackage = false;
     shield = null;
     package = null;
+    currentScreen = "game";
     
     // Skoru güncelle
     updateUI();
@@ -139,6 +153,7 @@ function init() {
     // Ekranları güncelle
     startScreen.classList.add('hidden');
     gameOverScreen.classList.add('hidden');
+    document.getElementById('level-select-screen').classList.add('hidden');
     
     // Oyun döngüsünü başlat
     requestAnimationFrame(gameLoop);
@@ -161,14 +176,29 @@ function createDeliveryPoint() {
     }
 }
 
+// Level zorluk ayarları
+const LEVEL_DIFFICULTIES = [
+    { obstacleCount: 5, obstacleSpeed: 1.0 },  // Level 1
+    { obstacleCount: 7, obstacleSpeed: 1.2 },  // Level 2
+    { obstacleCount: 9, obstacleSpeed: 1.4 },  // Level 3
+    { obstacleCount: 11, obstacleSpeed: 1.6 }, // Level 4
+    { obstacleCount: 13, obstacleSpeed: 1.8 }, // Level 5
+    { obstacleCount: 15, obstacleSpeed: 2.0 }, // Level 6
+    { obstacleCount: 17, obstacleSpeed: 2.2 }, // Level 7
+    { obstacleCount: 19, obstacleSpeed: 2.4 }, // Level 8
+    { obstacleCount: 21, obstacleSpeed: 2.6 }, // Level 9
+    { obstacleCount: 23, obstacleSpeed: 2.8 }  // Level 10
+];
+
 // Engelleri oluştur
 function createObstacles() {
     obstacles = [];
     
-    // Level'a göre engel sayısını belirle
-    const obstacleCount = BASE_OBSTACLE_COUNT + (level - 1) * 2;
+    // Level'a göre zorluk ayarını al (1-tabanlı indeks)
+    const levelIndex = Math.min(level - 1, LEVEL_DIFFICULTIES.length - 1);
+    const difficulty = LEVEL_DIFFICULTIES[levelIndex];
     
-    for (let i = 0; i < obstacleCount; i++) {
+    for (let i = 0; i < difficulty.obstacleCount; i++) {
         // Yol üzerinde rastgele bir konum seç
         const roadIndex = Math.floor(Math.random() * MAP.roads.length);
         const road = MAP.roads[roadIndex];
@@ -179,7 +209,7 @@ function createObstacles() {
             width: 30,
             height: 15,
             color: '#FF0',
-            speed: 1 + Math.random() * 2,
+            speed: difficulty.obstacleSpeed + Math.random(),
             direction: Math.floor(Math.random() * 4) // 0: yukarı, 1: sağ, 2: aşağı, 3: sol
         };
         
@@ -284,12 +314,7 @@ function updatePlayer() {
         // Puan ekle
         score += 10;
         
-        // Level kontrolü
-        if (score % 50 === 0) {
-            level++;
-            // Engelleri yeniden oluştur
-            createObstacles();
-        }
+        // Level kontrolü - artık oyun içinde level atlamıyoruz
         
         // Paketi bırak ve yeni paket oluştur
         hasPackage = false;
@@ -323,6 +348,9 @@ function updatePlayer() {
             isStunned = true;
             stunnedUntil = Date.now() + STUN_TIME;
             player.color = '#AAA'; // Stun durumunda renk değiştir
+            
+            // Oyuncuyu yolun dışına taşı
+            movePlayerOutOfRoad();
             
             // UI güncelle
             updateUI();
@@ -491,6 +519,13 @@ function updateUI() {
     const levelElement = document.getElementById('level');
     if (levelElement) {
         levelElement.textContent = level;
+    }
+    
+    // Bir sonraki level için gereken puanı göster
+    const nextLevelElement = document.getElementById('next-level-score');
+    if (nextLevelElement) {
+        const pointsNeeded = 50 - (score % 50);
+        nextLevelElement.textContent = pointsNeeded;
     }
 }
 
@@ -666,11 +701,84 @@ function gameLoop(timestamp) {
     }
 }
 
+// Oyuncuyu yolun dışına taşı
+function movePlayerOutOfRoad() {
+    // Oyuncunun yol üzerinde olup olmadığını kontrol et
+    let isOnRoad = false;
+    let closestRoad = null;
+    let minDistance = Infinity;
+    
+    // Oyuncunun merkez noktası
+    const playerCenterX = player.x + player.width / 2;
+    const playerCenterY = player.y + player.height / 2;
+    
+    // Tüm yolları kontrol et
+    for (const road of MAP.roads) {
+        if (playerCenterX >= road.x && 
+            playerCenterX <= road.x + road.width && 
+            playerCenterY >= road.y && 
+            playerCenterY <= road.y + road.height) {
+            isOnRoad = true;
+            
+            // En yakın yol kenarını bul
+            const distToLeft = Math.abs(playerCenterX - road.x);
+            const distToRight = Math.abs(playerCenterX - (road.x + road.width));
+            const distToTop = Math.abs(playerCenterY - road.y);
+            const distToBottom = Math.abs(playerCenterY - (road.y + road.height));
+            
+            // En yakın kenarı bul
+            const minEdgeDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+            
+            // Oyuncuyu en yakın kenara taşı
+            if (minEdgeDist === distToLeft) {
+                player.x = road.x - player.width - 5;
+            } else if (minEdgeDist === distToRight) {
+                player.x = road.x + road.width + 5;
+            } else if (minEdgeDist === distToTop) {
+                player.y = road.y - player.height - 5;
+            } else if (minEdgeDist === distToBottom) {
+                player.y = road.y + road.height + 5;
+            }
+            
+            break;
+        }
+        
+        // Eğer yol üzerinde değilse, en yakın yolu bul
+        const roadCenterX = road.x + road.width / 2;
+        const roadCenterY = road.y + road.height / 2;
+        const distance = Math.sqrt(
+            Math.pow(playerCenterX - roadCenterX, 2) + 
+            Math.pow(playerCenterY - roadCenterY, 2)
+        );
+        
+        if (distance < minDistance) {
+            minDistance = distance;
+            closestRoad = road;
+        }
+    }
+    
+    // Ekran sınırlarını kontrol et
+    if (player.x < 0) player.x = 0;
+    if (player.x + player.width > GAME_WIDTH) player.x = GAME_WIDTH - player.width;
+    if (player.y < 0) player.y = 0;
+    if (player.y + player.height > GAME_HEIGHT) player.y = GAME_HEIGHT - player.height;
+}
+
 // Oyun bitti
 function gameOver() {
     gameRunning = false;
     finalScoreElement.textContent = score;
     gameOverScreen.classList.remove('hidden');
+    currentScreen = "gameOver";
+    
+    // Bir sonraki levelin kilidini aç (eğer yeterli puan yapıldıysa)
+    if (score >= 50 && level >= maxLevel) {
+        maxLevel = Math.min(level + 1, LEVEL_DIFFICULTIES.length);
+        // Local storage'a kaydet
+        saveMaxLevel(maxLevel);
+        // Level seçim ekranını güncelle
+        updateLevelSelectScreen();
+    }
 }
 
 // Tuş olayları
@@ -678,6 +786,12 @@ document.addEventListener('keydown', (e) => {
     if (keys.hasOwnProperty(e.key)) {
         e.preventDefault(); // Sayfanın kaymasını engelle
         keys[e.key] = true;
+    }
+    
+    // Oyun bitti ekranında Space veya Enter ile devam et
+    if (currentScreen === "gameOver" && (e.key === " " || e.key === "Enter")) {
+        e.preventDefault();
+        init(level);
     }
 });
 
@@ -688,9 +802,85 @@ document.addEventListener('keyup', (e) => {
     }
 });
 
+// Level seçim ekranını oluştur
+function createLevelSelectScreen() {
+    const levelButtonsContainer = document.getElementById('level-buttons');
+    levelButtonsContainer.innerHTML = '';
+    
+    // Local storage'dan maxLevel'i yükle (güncel olduğundan emin olmak için)
+    maxLevel = loadMaxLevel();
+    
+    // 10 level oluştur
+    for (let i = 1; i <= 10; i++) {
+        const button = document.createElement('button');
+        button.textContent = i;
+        button.classList.add('level-button');
+        
+        // Açık level'ları işaretle
+        if (i <= maxLevel) {
+            button.classList.add('unlocked');
+            button.addEventListener('click', () => {
+                init(i);
+            });
+        }
+        
+        levelButtonsContainer.appendChild(button);
+    }
+}
+
+// Level seçim ekranını güncelle
+function updateLevelSelectScreen() {
+    // Local storage'dan maxLevel'i yükle (güncel olduğundan emin olmak için)
+    maxLevel = loadMaxLevel();
+    
+    const levelButtons = document.querySelectorAll('.level-button');
+    levelButtons.forEach((button, index) => {
+        const levelNum = index + 1;
+        if (levelNum <= maxLevel) {
+            button.classList.add('unlocked');
+            // Event listener'ı temizle ve yeniden ekle
+            const oldButton = button.cloneNode(true);
+            button.parentNode.replaceChild(oldButton, button);
+            oldButton.addEventListener('click', () => {
+                init(levelNum);
+            });
+        }
+    });
+}
+
+// Level seçim ekranını göster
+function showLevelSelectScreen() {
+    startScreen.classList.add('hidden');
+    gameOverScreen.classList.add('hidden');
+    document.getElementById('level-select-screen').classList.remove('hidden');
+    currentScreen = "levelSelect";
+    
+    // Level seçim ekranını oluştur
+    createLevelSelectScreen();
+}
+
 // Buton olayları
-startButton.addEventListener('click', init);
-restartButton.addEventListener('click', init);
+startButton.addEventListener('click', () => init(1));
+restartButton.addEventListener('click', () => init(level));
+
+// Level seçim butonları
+document.getElementById('level-select-button').addEventListener('click', showLevelSelectScreen);
+document.getElementById('level-select-button-end').addEventListener('click', showLevelSelectScreen);
+document.getElementById('back-button').addEventListener('click', () => {
+    document.getElementById('level-select-screen').classList.add('hidden');
+    startScreen.classList.remove('hidden');
+    currentScreen = "start";
+});
+
+// Levelleri sıfırlama butonu
+document.getElementById('reset-levels-button').addEventListener('click', () => {
+    if (confirm('Tüm level ilerlemeleriniz sıfırlanacak. Emin misiniz?')) {
+        maxLevel = 1;
+        saveMaxLevel(1);
+        createLevelSelectScreen();
+        alert('Tüm leveller sıfırlandı.');
+    }
+});
 
 // Sayfa yüklendiğinde
 window.addEventListener('load', () => {
@@ -698,8 +888,16 @@ window.addEventListener('load', () => {
     canvas.width = GAME_WIDTH;
     canvas.height = GAME_HEIGHT;
     
+    // Local storage'dan maxLevel'i yükle
+    maxLevel = loadMaxLevel();
+    console.log("Yüklenen maxLevel:", maxLevel);
+    
     // Başlangıç ekranını göster
     startScreen.classList.remove('hidden');
+    currentScreen = "start";
+    
+    // Level seçim ekranını oluştur
+    createLevelSelectScreen();
     
     // Sayfa boyutunu ayarla
     document.body.style.width = '100%';

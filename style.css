@@ -61,6 +61,34 @@ body {
     z-index: 20;
 }
 
+#level-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    max-width: 80%;
+    margin: 20px 0;
+}
+
+.level-button {
+    margin: 5px;
+    width: 60px;
+    height: 60px;
+    font-size: 24px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background-color: #555;
+}
+
+.level-button.unlocked {
+    background-color: #4CAF50;
+    cursor: pointer;
+}
+
+.level-button.unlocked:hover {
+    background-color: #45a049;
+}
+
 .hidden {
     display: none;
 }
